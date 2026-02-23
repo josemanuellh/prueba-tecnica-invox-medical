@@ -1,0 +1,30 @@
+{
+    "name": "prueba-tecnica-invox-medical",
+    "private": true,
+    "workspaces": [
+        "backend",
+        "frontend",
+        "shared"
+    ],
+    "scripts": {
+        "dev:backend": "npm run dev --workspace=backend",
+        "dev:frontend": "npm run dev --workspace=frontend",
+        "init:resources": "node scripts/init-resources.js",
+        "docker:down": "docker-compose down",
+        "0:aws:login": "aws login",
+        "1:services:up": "docker-compose up -d localstack && node scripts/init-resources.js",
+        "2:docker:clean-build": "docker-compose down && docker-compose build --no-cache",
+        "3:docker:up": "node scripts/clean-cache.js && docker-compose up",
+        "4:ngrok:up": "ngrok http 3000",
+        "lint": "npm run lint --workspaces --if-present"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@typescript-eslint/eslint-plugin": "^8.56.0",
+        "@typescript-eslint/parser": "^8.56.0",
+        "eslint": "^10.0.0",
+        "serverless": "^3.40.0",
+        "serverless-offline": "^13.9.0",
+        "typescript-eslint": "^8.56.0"
+    }
+}
