@@ -1,0 +1,224 @@
+service: invox-medical-backend
+frameworkVersion: "3"
+configValidationMode: off
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-esbuild
+  - serverless-offline
+
+custom:
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: false
+    exclude: ["aws-sdk"]
+    target: "node20"
+    platform: "node"
+    concurrency: 1
+    watch:
+      pattern: ["src/**/*.ts"]
+      ignore:
+        [
+          "node_modules/**/*",
+          ".build/**/*",
+          ".esbuild/**/*",
+          ".serverless/**/*",
+          "../**/*",
+        ]
+  serverless-offline:
+    httpPort: 3000
+    host: 0.0.0.0
+    noPrependStageInUrl: true
+    useChildProcesses: true
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: eu-south-2
+  stage: dev
+  environment:
+    DYNAMO_TABLE: ${self:service}-transcriptions-${self:provider.stage}
+    S3_BUCKET: ${self:service}-audios-${self:provider.stage}
+    COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID, 'eu-south-2_JMqHfrYX4'}
+    COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID, '2drdfcjpj7rpbhu32a4t99f0bq'}
+    SPEECHMATICS_API_KEY: ${env:SPEECHMATICS_API_KEY, 'bCWRHCr3Lv9MfLC1lDQDn9hNgZyfuszL'}
+    IS_OFFLINE: ${env:IS_OFFLINE, 'true'}
+    DYNAMODB_ENDPOINT: ${env:DYNAMODB_ENDPOINT, 'http://localhost:4566'}
+    S3_ENDPOINT: ${env:S3_ENDPOINT, 'http://localhost:4566'}
+    WEBHOOK_URL: ${env:WEBHOOK_URL, ''}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:Query
+            - dynamodb:Scan
+          Resource: !GetAtt TranscriptionsTable.Arn
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+            - s3:ListBucket
+          Resource:
+            - !GetAtt AudioBucket.Arn
+            - !Join ["", [!GetAtt AudioBucket.Arn, "/*"]]
+
+functions:
+  getHistory:
+    handler: ./src/handlers/transcription-handler.getHistory
+    events:
+      - http:
+          path: transcriptions
+          method: get
+          cors: true
+          authorizer:
+            name: CognitoAuthorizer
+            arn: arn:aws:cognito-idp:eu-south-2:*:userpool/${env:COGNITO_USER_POOL_ID, 'eu-south-2_JMqHfrYX4'}
+            type: COGNITO_USER_POOLS
+
+  getRtToken:
+    handler: ./src/handlers/transcription-handler.getRtToken
+    events:
+      - http:
+          path: transcriptions/rt-token
+          method: get
+          cors: true
+          authorizer:
+            name: CognitoAuthorizer
+            arn: arn:aws:cognito-idp:eu-south-2:*:userpool/${env:COGNITO_USER_POOL_ID, 'eu-south-2_JMqHfrYX4'}
+            type: COGNITO_USER_POOLS
+
+  saveRealtimeTranscription:
+    handler: ./src/handlers/transcription-handler.saveRealtimeTranscription
+    events:
+      - http:
+          path: transcriptions/save-realtime
+          method: post
+          cors: true
+          authorizer:
+            name: CognitoAuthorizer
+            arn: arn:aws:cognito-idp:eu-south-2:*:userpool/${env:COGNITO_USER_POOL_ID, 'eu-south-2_JMqHfrYX4'}
+            type: COGNITO_USER_POOLS
+
+  getUploadUrl:
+    handler: ./src/handlers/transcription-handler.getUploadUrl
+    events:
+      - http:
+          path: transcriptions/upload-url
+          method: post
+          cors: true
+          authorizer:
+            name: CognitoAuthorizer
+            arn: arn:aws:cognito-idp:eu-south-2:*:userpool/${env:COGNITO_USER_POOL_ID, 'eu-south-2_JMqHfrYX4'}
+            type: COGNITO_USER_POOLS
+
+  getTranscription:
+    handler: ./src/handlers/transcription-handler.getTranscription
+    events:
+      - http:
+          path: transcriptions/{id}
+          method: get
+          cors: true
+          authorizer:
+            name: CognitoAuthorizer
+            arn: arn:aws:cognito-idp:eu-south-2:*:userpool/${env:COGNITO_USER_POOL_ID, 'eu-south-2_JMqHfrYX4'}
+            type: COGNITO_USER_POOLS
+
+  processTranscription:
+    handler: ./src/handlers/transcription-handler.processTranscription
+    timeout: 300
+    events:
+      - http:
+          path: transcriptions/process
+          method: post
+          cors: true
+          authorizer:
+            name: CognitoAuthorizer
+            arn: arn:aws:cognito-idp:eu-south-2:*:userpool/${env:COGNITO_USER_POOL_ID, 'eu-south-2_JMqHfrYX4'}
+            type: COGNITO_USER_POOLS
+
+  transcriptionWebhook:
+    handler: ./src/handlers/transcription-handler.webhook
+    events:
+      - http:
+          path: transcriptions/webhook
+          method: post
+          cors: true
+
+  deleteTranscription:
+    handler: ./src/handlers/transcription-handler.deleteTranscription
+    events:
+      - http:
+          path: transcriptions
+          method: delete
+          cors: true
+          authorizer:
+            name: CognitoAuthorizer
+            arn: arn:aws:cognito-idp:eu-south-2:*:userpool/${env:COGNITO_USER_POOL_ID, 'eu-south-2_JMqHfrYX4'}
+            type: COGNITO_USER_POOLS
+
+resources:
+  Resources:
+    TranscriptionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMO_TABLE}
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: createdAt
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: IdIndex
+            KeySchema:
+              - AttributeName: id
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
+    AudioBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.S3_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedHeaders: ["*"]
+              AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
+              AllowedOrigins: ["*"]
+
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: ${self:service}-user-pool-${self:provider.stage}
+        UsernameAttributes: [email]
+        AutoVerifiedAttributes: [email]
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireLowercase: true
+            RequireNumbers: true
+            RequireUppercase: true
+            RequireSymbols: false
+
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: ${self:service}-client-${self:provider.stage}
+        UserPoolId: { Ref: CognitoUserPool }
+        ExplicitAuthFlows:
+          - ALLOW_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+          - ALLOW_USER_SRP_AUTH
