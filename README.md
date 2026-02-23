@@ -21,7 +21,7 @@ Prueba tecnica para Invox Medical. Implementada con arquitectura Serverless en e
 - Node.js v20+ (usar nvm para gestionar versiones)
 - Docker
 - AWS CLI (para el login en cognito)
-- ngrok (para exponer el puerto 3000 a internet, solo para pruebas en local) -> [text](https://ngrok.com/download)
+- ngrok (para exponer el puerto 3000 a internet, solo para pruebas en local) -> [Download ngrok](https://ngrok.com/download)
 
 
 ### 1. Preparar el entorno
